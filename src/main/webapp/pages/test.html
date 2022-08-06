@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>图书管理</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <style>
+        .el-table .warning-row {
+            background: oldlace;
+        }
+
+        .el-table .success-row {
+            background: #f0f9eb;
+        }
+
+        .demo-form-inline {
+            margin-left: 30%;
+        }
+
+        .my-pagination {
+            margin-left: 30%;
+        }
+
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <template>
+        <!--    表单    -->
+        <el-form :inline="true" :model="addForm" class="demo-form-inline">
+            <el-form-item label="条形码">
+                <el-input v-model="addForm.barCode"></el-input>
+            </el-form-item>
+            <el-form-item label="书名">
+                <el-input v-model="addForm.name"></el-input>
+            </el-form-item>
+            <el-form-item>
+                <el-button type="primary" icon="el-icon-search" @click="onSubmit">搜索</el-button>
+            </el-form-item>
+        </el-form>
+
+        <!-- 按钮 -->
+        <el-row>
+            <el-button type="danger" @click="deleteByIds">批量删除</el-button>
+            <el-button type="success" @click="dialogVisible = true">新增</el-button>
+        </el-row>
+
+        <!--修改--对话框-->
+        <el-dialog
+                title="提示"
+                :visible.sync="dialogVisible"
+                width="30%">
+            <!--表单-->
+            <el-form ref="form" :model="addForm" label-width="80px">
+                <el-form-item label="书名">
+                    <el-input v-model="addForm.name"></el-input>
+                </el-form-item>
+                <el-form-item label="作者">
+                    <el-input v-model="addForm.author"></el-input>
+                </el-form-item>
+                <el-form-item label="出版商">
+                    <el-input v-model="addForm.publisher"></el-input>
+                </el-form-item>
+                <el-form-item label="出版时间">
+                    <el-col :span="11">
+                        <el-date-picker type="date" placeholder="选择日期" v-model="addForm.publishDate" style="width: 100%;"></el-date-picker>
+                    </el-col>
+                </el-form-item>
+                <el-form-item label="在馆数量">
+                    <el-input v-model="addForm.count"></el-input>
+                </el-form-item>
+                <el-form-item>
+                    <el-button type="primary" @click="addBook">立即创建</el-button>
+                    <el-button @click="dialogVisible = false">取消</el-button>
+                </el-form-item>
+            </el-form>
+        </el-dialog>
+
+        <!--        表格        -->
+        <el-table
+                :data="books"
+                style="width: 100%"
+                :row-class-name="tableRowClassName"
+                @selection-change="handleSelectionChange">
+            <el-table-column
+                    type="selection"
+                    width="55">
+            </el-table-column>
+            <el-table-column
+                    type="index"
+                    width="50">
+            </el-table-column>
+            <el-table-column
+                    align="center"
+                    prop="barCode"
+                    label="条形码">
+            </el-table-column>
+            <el-table-column
+                    align="center"
+                    prop="name"
+                    label="书名">
+            </el-table-column>
+            <el-table-column
+                    align="center"
+                    prop="author"
+                    label="作者">
+            </el-table-column>
+            <el-table-column
+                    align="center"
+                    prop="publisher"
+                    label="出版商">
+            </el-table-column>
+            <el-table-column
+                    align="center"
+                    prop="publishDate"
+                    label="出版日期">
+            </el-table-column>
+            <el-table-column
+                    align="center"
+                    prop="count"
+                    label="在馆数量">
+            </el-table-column>
+            <el-table-column>
+                <el-button type="primary" icon="el-icon-edit" circle ></el-button>
+                <el-button type="danger" icon="el-icon-delete" circle @click="deleteByIds"></el-button>
+            </el-table-column>
+        </el-table>
+
+        <!--分页-->
+        <el-pagination class="my-pagination"
+                       @size-change="handleSizeChange"
+                       @current-change="handleCurrentChange"
+                       :current-page="currentPage"
+                       :page-sizes="[5, 10, 20, 30, 40]"
+                       :page-size="10"
+                       layout="total, sizes, prev, pager, next, jumper"
+                       :total="totalCount">
+        </el-pagination>
+    </template>
+
+
+</div>
+
+<script src="../js/vue.js"></script>
+<script src="../js/axios.js"></script>
+<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<script>
+    function timestampToTime(timestamp) {
+        let date = new Date(timestamp);//时间戳为10位需*1000，时间戳为13位的话不需乘1000
+        let Y = date.getFullYear() + '-';
+        let M = (date.getMonth()+1 < 10 ? '0'+(date.getMonth()+1):date.getMonth()+1) + '-';
+        let D = (date.getDate()< 10 ? '0'+date.getDate():date.getDate())+ ' ';
+        return Y+M+D;
+    }
+
+    new Vue({
+        el: '#app',
+        methods: {
+            tableRowClassName({row, rowIndex}) {
+                if (rowIndex === -1) {
+                    return 'warning-row';
+                } else if (rowIndex %2 !== 1) {
+                    return 'success-row';
+                }
+                return '';
+            },
+            handleSelectionChange(val) {
+                this.multipleSelection = val;
+            },
+            // 查询
+            onSubmit() {
+                this.selectByPageAndCondition()
+            },
+            // 删除操作中确认删除的提示消息
+            open() {
+                this.$confirm('此操作将永久删除该数据, 是否继续?', '提示', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning'
+                }).then(() => {
+                    this.$message({
+                        type: 'success',
+                        message: '删除成功!'
+                    });
+                }).catch(() => {
+                    this.$message({
+                        type: 'info',
+                        message: '已取消删除'
+                    });
+                });
+            },
+            selectAll(){
+                axios({
+                    method:"get",
+                    url:"http://localhost:8080/book/selectAll"
+                }).then(
+                    response => {
+                        this.books = response.data;
+                        /* 时间戳转化位中国时间 */
+                        for(let i = 0; i < this.books.length; i++){
+                            this.books[i].publishDate = timestampToTime(this.books[i].publishDate);
+                        }
+                    }
+                )
+            },
+            selectByPage(){
+                axios({
+                    method:"get",
+                    url:"http://localhost:8080/book/selectByPage?currentPage="+ this.currentPage +"&size="+ this.pageSize +""
+                }).then(
+                    response => {
+                        this.books = response.data.rows;
+                        this.totalCount = response.data.totalPage;
+                        /* 时间戳转化位中国时间 */
+                        for(let i = 0; i < this.books.length; i++){
+                            this.books[i].publishDate = timestampToTime(this.books[i].publishDate);
+                        }
+                    }
+                )
+            },
+            selectByPageAndCondition(){
+                axios({
+                    method:"post",
+                    url:"http://localhost:8080/book/selectByPageAndCondition?currentPage="+ this.currentPage +"&size="+ this.pageSize +"",
+                    data:this.addForm
+                }).then(
+                    response => {
+                        this.books = response.data.rows;
+                        this.totalCount = response.data.totalPage;
+                        /* 时间戳转化位中国时间 */
+                        for(let i = 0; i < this.books.length; i++){
+                            this.books[i].publishDate = timestampToTime(this.books[i].publishDate);
+                        }
+                    }
+                )
+            },
+            addBook(){
+                axios({
+                    method: "post",
+                    url:"http://localhost:8080/book/add",
+                    data: this.addForm
+                }).then(
+                    resp => {
+                        if(resp.data === "success") {
+
+                            this.dialogVisible = false;
+                            this.selectAll();
+                            this.$message({
+                                message: '恭喜你，添加成功',
+                                type: 'success'
+                            });
+                        }
+                    }
+                )
+            },
+            handleSizeChange(val) {
+                //console.log(`每页 ${val} 条`);
+                this.pageSize = val;
+                this.selectByPage();
+            },
+            handleCurrentChange(val) {
+                // console.log(`当前页: ${val}`);
+                this.currentPage = val;
+                this.selectByPage();
+            },
+            //批量删除
+            deleteByIds(){
+                if(this.multipleSelection.length === 0){
+                    return;
+                }
+                this.$confirm('此操作将永久删除该数据, 是否继续?', '提示', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning'
+                }).then(() => {
+                    for(let i = 0; i < this.multipleSelection.length; i++){
+                        this.selectedBarCodes[i] = this.multipleSelection[i].barCode;
+                    }
+                    axios({
+                        method: "post",
+                        url:"http://localhost:8080/book/deleteByBarCodes",
+                        data: this.selectedBarCodes
+                    }).then(
+                        resp => {
+                            if(resp.data === "success") {
+                                this.selectByPage();
+                                this.$message({
+                                    message: '删除成功',
+                                    type: 'success'
+                                });
+                            }
+                            else{
+                                this.$message.error('删除失败');
+                            }
+                        }
+                    )
+                }).catch(() => {
+                    this.$message({
+                        type: 'info',
+                        message: '已取消删除'
+                    });
+                });
+            }
+        },
+        //查询所有,页面加载完成后，请求数据
+        mounted(){
+            this.selectByPage();
+            this.$message({
+                message: '加载成功',
+                type: 'success'
+            });
+        },
+        data() {
+            return {
+                //添加图书的表单
+                addForm: {
+                    barCode:'',
+                    name: '',
+                    author: '',
+                    publisher:'',
+                    publishDate: '',
+                    count: ''
+                },
+                dialogVisible: false,
+                books: [],
+                selectedBarCodes:[],
+                multipleSelection:[],
+                formInline: {
+                    bookBarCode: '',
+                    bookName: ''
+                },
+                currentPage: 1,
+                totalCount:10,
+                pageSize:10
+            }
+        }
+    })
+</script>
+</body>
+</html>
